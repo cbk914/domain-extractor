@@ -1,18 +1,11 @@
 # domain-extractor
-
-Generate a domain list from a text file, URL or zone file
-
-Description:
-
-domain-extractor.py is a Python script that extracts domain names from a URL, a file (txt, html, csv, json, or xml), or a zone file. It also supports resolving IP addresses to domain names and checking domain status codes and redirections.
+Domain-extractor is a Python script that extracts domain names from a text file, URL, or zone file. It supports resolving IP addresses to domain names and checking domain status codes and redirections.
 
 # Installation:
 
 Ensure you have Python 3.6 or higher installed on your system. You can download Python from the official website: https://www.python.org/downloads/
 
-Download or clone the script domain-extractor.py and the requirements.txt file to a directory on your local machine.
-
-Open a terminal or command prompt and navigate to the directory containing the script and requirements.txt.
+	git clone https://github.com/cbk914/domain-extractor.git
 
 Create a virtual environment (optional, but recommended):
 
@@ -29,12 +22,11 @@ On Windows:
 	venv\Scripts\activate
 
 Install the required packages using the following command:
-
+ 
 	pip install -r requirements.txt
 
-Execution Instructions:
-
-To run the domain-extractor.py script, use one of the following commands depending on the input source:
+# Usage:
+To run the domain-extractor script, use one of the following commands depending on the input source:
 
 To extract domains from a URL:
 
@@ -52,3 +44,4 @@ To check the status codes and redirections of domains in a file:
 
 	python domain-extractor.py -c domains_to_check.txt
 
+Note: Replace input_file.ext, zone_file, and domains_to_check.txt with the appropriate filenames or paths on your local machine. Also, replace output.txt with the desired output filename, in txt, html, csv, json, or xml format.
