@@ -14,6 +14,16 @@ from bs4 import BeautifulSoup
 from xml.etree import ElementTree as ET
 import time
 
+BANNER = r"""
+______                      _         _____     _                  _             
+|  _  \                    (_)       |  ___|   | |                | |            
+| | | |___  _ __ ___   __ _ _ _ __   | |____  _| |_ _ __ __ _  ___| |_ ___  _ __ 
+| | | / _ \| '_ ` _ \ / _` | | '_ \  |  __\ \/ / __| '__/ _` |/ __| __/ _ \| '__|
+| |/ / (_) | | | | | | (_| | | | | | | |___>  <| |_| | | (_| | (__| || (_) | |   
+|___/ \___/|_| |_| |_|\__,_|_|_| |_| \____/_/\_\\__|_|  \__,_|\___|\__\___/|_|   
+                                                                                 
+"""
+
 def extract_domains_from_url(url):
     try:
         response = requests.get(url)
@@ -180,7 +190,7 @@ def resolve_ip_to_domain(ip_address):
     return domain
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract domain names from a URL, file, or zone file and check the domains.")
+    parser = argparse.ArgumentParser(description=f"{BANNER}\nExtract domain names from a URL, file, or zone file and check the domains.", formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('-u', '--url', action='append', help='URL containing domain names')
     parser.add_argument('-f', '--file', action='append', help='File containing domain names (txt, html, csv, json, xml)')
     parser.add_argument('-z', '--zone', action='append', help='Zone file containing domain names')
@@ -243,4 +253,5 @@ def main():
         print("No resolved domains from IP addresses.")
 
 if __name__ == "__main__":
+    print(BANNER)
     main()
