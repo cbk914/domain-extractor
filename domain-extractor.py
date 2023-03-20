@@ -13,6 +13,7 @@ import io
 from bs4 import BeautifulSoup
 from xml.etree import ElementTree as ET
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 BANNER = r"""
 ______                      _         _____     _                  _             
@@ -115,43 +116,53 @@ def extract_domains_from_zone_file(file_path, domains):
 
     return domains
 
-def check_domains(file_path, output_file):
+def check_domain(url):
+    checked_domain = None
+    try:
+        response = requests.get(url, timeout=10)
+        status_code = response.status_code
+        if 100 <= status_code < 400:
+            checked_domain = (url, status_code, [])
+            redirects = []
+            if response.history:
+                for res in response.history:
+                    redirects.append((res.url, res.status_code))
+            checked_domain = (url, status_code, redirects)
+    except (requests.exceptions.RequestException, IOError):
+        pass
+    return checked_domain
+
+def check_domains(file_path, output_file, max_workers=10):
     checked_domains = []
 
     try:
         with open(file_path, 'r') as file:
-            domain_list = file.readlines()
+            domain_list = [line.strip() for line in file.readlines()]
     except FileNotFoundError:
         print(f"Error: File not found - {file_path}")
         return checked_domains
 
     start_time = time.time()
-    for url in domain_list:
-        url = url.strip()
-        if not url.startswith("http://") and not url.startswith("https://"):
-            url = "http://" + url
-        try:
-            response = requests.get(url, timeout=10)
-            status_code = response.status_code
-            if 100 <= status_code < 400:
-                checked_domains.append((url, status_code, []))
-                print(f"[{status_code}] {url}")
-                if response.history:
-                    for res in response.history:
-                        print(f"\tRedirected To: [Response:{res.status_code}] {res.url}")
-                        checked_domains[-1][2].append((res.url, res.status_code))
-                    print(f"\tFinal Redirection: [Response:{response.status_code}] {response.url}")
-        except (requests.exceptions.RequestException, IOError):
-            pass
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_url = {executor.submit(check_domain, url): url for url in domain_list}
+
+        for future in as_completed(future_to_url):
+            url = future_to_url[future]
+            try:
+                checked_domain = future.result()
+                if checked_domain:
+                    checked_domains.append(checked_domain)
+                    url, status_code, redirects = checked_domain
+                    print(f"[{status_code}] {url}")
+                    if redirects:
+                        for redirect_url, redirect_status_code in redirects:
+                            print(f"\tRedirected To: [Response:{redirect_status_code}] {redirect_url}")
+            except Exception as e:
+                print(f"Error while checking {url}: {e}")
 
     print(f"\n[!] Finished in {int(time.time() - start_time)} second(s).")
-    
-    with open(output_file, 'w') as file:
-        for url, status_code, redirects in checked_domains:
-            file.write(f"[{status_code}] {url}\n")
-            if redirects:
-                for redirect_url, redirect_status_code in redirects:
-                    file.write(f"\tRedirected To: [Response:{redirect_status_code}] {redirect_url}\n")
+    save_checked_domains_to_file(checked_domains, output_file)
     return checked_domains
 
 def save_checked_domains_to_file(checked_domains, output_file):
@@ -205,7 +216,7 @@ def main():
     # Check domains and save results to output file
     if args.check:
         output_file = os.path.splitext(args.output)[0] + '_checked.txt'
-        check_domains(args.check, output_file)
+        check_domains(args.check, output_file, max_workers=20)  # You can change the number of max_workers to control the number of threads
         print(f"Checked domains have been saved to {output_file}")
 
     all_domains = []
