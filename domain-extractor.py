@@ -26,6 +26,7 @@ ______                      _         _____     _                  _
 """
 
 def extract_domains_from_url(url):
+    print(f"[+] Extracting elemments and domains from URL {url}")
     try:
         response = requests.get(url)
         response.raise_for_status()
@@ -54,6 +55,7 @@ def extract_domains_from_url(url):
     return domains, elements
 
 def extract_domains_from_file(file_path):
+    print(f"[+] Extracting domains from file {file_path}")
     try:
         with open(file_path, 'r') as file:
             content = file.read()
@@ -100,6 +102,7 @@ def extract_domains_from_file(file_path):
     return domain_list
 
 def extract_domains_from_zone_file(file_path, domains):
+    print(f"[+] Extracting domains from zone file {file_path}")
     try:
         with open(file_path, 'r') as file:
             content = file.read()
@@ -117,6 +120,7 @@ def extract_domains_from_zone_file(file_path, domains):
     return domains
 
 def check_domain(url):
+    print(f"[+] Checking domains...")
     checked_domain = None
     try:
         response = requests.get(url, timeout=10)
@@ -133,6 +137,7 @@ def check_domain(url):
     return checked_domain
 
 def check_domains(file_path, output_file, max_workers=10):
+    print(f"[+] Checking domains from {file_path}")
     checked_domains = []
 
     try:
@@ -166,14 +171,20 @@ def check_domains(file_path, output_file, max_workers=10):
     return checked_domains
 
 def save_checked_domains_to_file(checked_domains, output_file):
+    if not checked_domains:
+        print(f"[!] Skipping {output_file} as no checked domains to save")
+        return
+
+    print(f"[+] Saving checked endpoints to file {output_file}")
     with open(output_file, 'w') as file:
         for url, status_code, redirects in checked_domains:
             file.write(f"[{status_code}] {url}\n")
             if redirects:
                 for redirect_url, redirect_status_code in redirects:
                     file.write(f"\tRedirected To: [Response:{redirect_status_code}] {redirect_url}\n")
-
+                    
 def extract_domains_from_text_file(file_path):
+    print(f"[+] Extracting domains from file {file_path}")
     try:
         with open(file_path, 'r') as file:
             content = file.read()
@@ -187,11 +198,17 @@ def extract_domains_from_text_file(file_path):
     return domain_list
 
 def save_domains_to_file(domain_list, output_file):
+    if not domain_list:
+        print(f"[!] Skipping {output_file} as no domains to save")
+        return
+
+    print(f"[+] Saving domains to file {output_file}")
     with open(output_file, 'w') as file:
         for domain in domain_list:
             file.write(f'{domain}\n')
 
 def resolve_ip_to_domain(ip_address):
+    print(f"[+] Resolving IP's to DNS domain names...")
     try:
         domain = socket.gethostbyaddr(ip_address)[0]
     except socket.herror:
@@ -205,7 +222,7 @@ def main():
     parser.add_argument('-u', '--url', action='append', help='URL containing domain names')
     parser.add_argument('-f', '--file', action='append', help='File containing domain names (txt, html, csv, json, xml)')
     parser.add_argument('-z', '--zone', action='append', help='Zone file containing domain names')
-    parser.add_argument('-c', '--check', help='Check domains in the provided file and save the results to output file')
+    parser.add_argument('-c', '--check', nargs='?', const=True, help='Check domains in the provided file or the current generated file and save the results to output file')
     parser.add_argument('-o', '--output', default='domains.txt', help='Output file to save the extracted domain names (default: domains.txt)')
     args = parser.parse_args()
 
@@ -214,10 +231,14 @@ def main():
         parser.error("Error: At least one of the following arguments is required: -u/--url, -f/--file, -z/--zone, -c/--check")
 
     # Check domains and save results to output file
-    if args.check:
+    check_file = args.check
+    if check_file is not None:
+        if check_file is True:
+            check_file = args.output
+
         output_file = os.path.splitext(args.output)[0] + '_checked.txt'
-        check_domains(args.check, output_file, max_workers=20)  # You can change the number of max_workers to control the number of threads
-        print(f"Checked domains have been saved to {output_file}")
+        check_domains(check_file, output_file, max_workers=20)  # You can change the number of max_workers to control the number of threads
+        print(f"Checked endpoints have been saved to {output_file}")
 
     all_domains = []
     if args.url:
