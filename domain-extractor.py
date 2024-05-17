@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Author: cbk914
+
 import os
 import re
 import requests
@@ -8,12 +9,12 @@ import argparse
 import socket
 import json
 import csv
-import subprocess
 import io
-from bs4 import BeautifulSoup
-from xml.etree import ElementTree as ET
+import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from bs4 import BeautifulSoup
+from xml.etree import ElementTree as ET
 
 BANNER = r"""
 ______                      _         _____     _                  _             
@@ -25,42 +26,28 @@ ______                      _         _____     _                  _
                                                                                  
 """
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s: %(message)s")
+
 def extract_domains_from_url(url):
-    print(f"[+] Extracting elemments and domains from URL {url}")
+    logging.info(f"Extracting elements and domains from URL: {url}")
     try:
         response = requests.get(url)
         response.raise_for_status()
         content = response.text
     except requests.exceptions.RequestException as e:
-        print(f"Error while fetching URL: {e}")
-        return [], []
+        logging.error(f"Error fetching URL {url}: {e}")
+        return []
 
     domain_pattern = r'(?:(?:https?|ftp):\/\/)?(?:[\w\-]+(?:\.[\w\-]+)+)(?:\/[\w\-?=%.]+)?'
-    domain_list = re.findall(domain_pattern, content)
-
-    if not domain_list:
-        url_domain = re.match(domain_pattern, url)
-        if url_domain:
-            domain_list.append(url_domain.group(0))
-
-    domain_only_pattern = r'(?:(?:https?|ftp):\/\/)?(?:www\.)?[\w/\-?=%.]+\.[\w/\-?=%.]+'
-    domains = []
-    elements = []
-    for item in domain_list:
-        if re.match(domain_only_pattern, item):
-            domains.append(item)
-        else:
-            elements.append(item)
-
-    return domains, elements
+    return re.findall(domain_pattern, content)
 
 def extract_domains_from_file(file_path):
-    print(f"[+] Extracting domains from file {file_path}")
+    logging.info(f"Extracting domains from file: {file_path}")
     try:
         with open(file_path, 'r') as file:
             content = file.read()
     except FileNotFoundError:
-        print(f"Error: File not found - {file_path}")
+        logging.error(f"File not found: {file_path}")
         return []
 
     file_extension = file_path.split('.')[-1].lower()
@@ -69,15 +56,16 @@ def extract_domains_from_file(file_path):
         try:
             soup = BeautifulSoup(content, 'html.parser')
             content = soup.get_text()
-        except html.parser.HTMLParseError as e:
-            print(f"Error while parsing HTML content: {e}")
+        except Exception as e:
+            logging.error(f"Error parsing HTML content: {e}")
+            return []
 
     elif file_extension == 'json':
         try:
             data = json.loads(content)
             content = json.dumps(data, indent=4)
         except json.JSONDecodeError:
-            print(f"Error: Invalid JSON file - {file_path}")
+            logging.error(f"Invalid JSON file: {file_path}")
             return []
 
     elif file_extension == 'csv':
@@ -85,7 +73,7 @@ def extract_domains_from_file(file_path):
             data = list(csv.reader(content.splitlines()))
             content = "\n".join([",".join(row) for row in data])
         except csv.Error:
-            print(f"Error: Invalid CSV file - {file_path}")
+            logging.error(f"Invalid CSV file: {file_path}")
             return []
 
     elif file_extension == 'xml':
@@ -93,21 +81,19 @@ def extract_domains_from_file(file_path):
             tree = ET.ElementTree(ET.fromstring(content))
             content = ET.tostring(tree.getroot(), encoding='unicode')
         except ET.ParseError:
-            print(f"Error: Invalid XML file - {file_path}")
+            logging.error(f"Invalid XML file: {file_path}")
             return []
 
     domain_pattern = r'(?:(?:https?|ftp):\/\/)?(?:[\w\-]+(?:\.[\w\-]+)+)(?:\/[\w\-?=%.]+)?'
-    domain_list = re.findall(domain_pattern, content)
-
-    return domain_list
+    return re.findall(domain_pattern, content)
 
 def extract_domains_from_zone_file(file_path, domains):
-    print(f"[+] Extracting domains from zone file {file_path}")
+    logging.info(f"Extracting domains from zone file: {file_path}")
     try:
         with open(file_path, 'r') as file:
             content = file.read()
     except FileNotFoundError:
-        print(f"Error: File not found - {file_path}")
+        logging.error(f"File not found: {file_path}")
         return []
 
     domain_pattern = r'\s+IN\s+A\s+(\S+)'
@@ -120,8 +106,7 @@ def extract_domains_from_zone_file(file_path, domains):
     return domains
 
 def check_domain(url):
-    print(f"[+] Checking domains...")
-    checked_domain = None
+    logging.info(f"Checking domain: {url}")
     try:
         response = requests.get(url, timeout=10)
         status_code = response.status_code
@@ -132,19 +117,20 @@ def check_domain(url):
                 for res in response.history:
                     redirects.append((res.url, res.status_code))
             checked_domain = (url, status_code, redirects)
+            return checked_domain
     except (requests.exceptions.RequestException, IOError):
-        pass
-    return checked_domain
+        logging.error(f"Error checking domain: {url}")
+    return None
 
 def check_domains(file_path, output_file, max_workers=10):
-    print(f"[+] Checking domains from {file_path}")
+    logging.info(f"Checking domains from file: {file_path}")
     checked_domains = []
 
     try:
         with open(file_path, 'r') as file:
             domain_list = [line.strip() for line in file.readlines()]
     except FileNotFoundError:
-        print(f"Error: File not found - {file_path}")
+        logging.error(f"File not found: {file_path}")
         return checked_domains
 
     start_time = time.time()
@@ -159,63 +145,48 @@ def check_domains(file_path, output_file, max_workers=10):
                 if checked_domain:
                     checked_domains.append(checked_domain)
                     url, status_code, redirects = checked_domain
-                    print(f"[{status_code}] {url}")
+                    logging.info(f"[{status_code}] {url}")
                     if redirects:
                         for redirect_url, redirect_status_code in redirects:
-                            print(f"\tRedirected To: [Response:{redirect_status_code}] {redirect_url}")
+                            logging.info(f"\tRedirected To: [Response:{redirect_status_code}] {redirect_url}")
             except Exception as e:
-                print(f"Error while checking {url}: {e}")
+                logging.error(f"Error checking {url}: {e}")
 
-    print(f"\n[!] Finished in {int(time.time() - start_time)} second(s).")
+    logging.info(f"Finished in {int(time.time() - start_time)} second(s).")
     save_checked_domains_to_file(checked_domains, output_file)
     return checked_domains
 
 def save_checked_domains_to_file(checked_domains, output_file):
     if not checked_domains:
-        print(f"[!] Skipping {output_file} as no checked domains to save")
+        logging.warning(f"No checked domains to save in {output_file}")
         return
 
-    print(f"[+] Saving checked endpoints to file {output_file}")
+    logging.info(f"Saving checked domains to file: {output_file}")
     with open(output_file, 'w') as file:
         for url, status_code, redirects in checked_domains:
             file.write(f"[{status_code}] {url}\n")
             if redirects:
                 for redirect_url, redirect_status_code in redirects:
                     file.write(f"\tRedirected To: [Response:{redirect_status_code}] {redirect_url}\n")
-                    
-def extract_domains_from_text_file(file_path):
-    print(f"[+] Extracting domains from file {file_path}")
-    try:
-        with open(file_path, 'r') as file:
-            content = file.read()
-    except FileNotFoundError:
-        print(f"Error: File not found - {file_path}")
-        return []
-
-    domain_pattern = r'(?:(?:https?|ftp):\/\/)?[\w/\-?=%.]+\.[\w/\-?=%.]+'
-    domain_list = re.findall(domain_pattern, content)
-
-    return domain_list
 
 def save_domains_to_file(domain_list, output_file):
     if not domain_list:
-        print(f"[!] Skipping {output_file} as no domains to save")
+        logging.warning(f"No domains to save in {output_file}")
         return
 
-    print(f"[+] Saving domains to file {output_file}")
+    logging.info(f"Saving domains to file: {output_file}")
     with open(output_file, 'w') as file:
         for domain in domain_list:
             file.write(f'{domain}\n')
 
 def resolve_ip_to_domain(ip_address):
-    print(f"[+] Resolving IP's to DNS domain names...")
+    logging.info(f"Resolving IP to domain: {ip_address}")
     try:
         domain = socket.gethostbyaddr(ip_address)[0]
+        return domain
     except socket.herror:
-        print(f"Error: Unable to resolve IP address - {ip_address}")
-        return None
-
-    return domain
+        logging.error(f"Unable to resolve IP address: {ip_address}")
+    return None
 
 def main():
     parser = argparse.ArgumentParser(description=f"{BANNER}\nExtract domain names from a URL, file, or zone file and check the domains.", formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -230,20 +201,10 @@ def main():
         parser.print_help()
         parser.error("Error: At least one of the following arguments is required: -u/--url, -f/--file, -z/--zone, -c/--check")
 
-    # Check domains and save results to output file
-    check_file = args.check
-    if check_file is not None:
-        if check_file is True:
-            check_file = args.output
-
-        output_file = os.path.splitext(args.output)[0] + '_checked.txt'
-        check_domains(check_file, output_file, max_workers=20)  # You can change the number of max_workers to control the number of threads
-        print(f"Checked endpoints have been saved to {output_file}")
-
     all_domains = []
     if args.url:
         for url in args.url:
-            domains_from_url, _ = extract_domains_from_url(url)  # Ignore the elements
+            domains_from_url = extract_domains_from_url(url)
             all_domains.extend(domains_from_url)
 
     if args.file:
@@ -252,12 +213,8 @@ def main():
             all_domains.extend(domains_from_file)
             
     if args.zone:
-        for file_path in args.zone:  # Fixed the loop to iterate through all zone files
-            if not os.path.exists(file_path):
-                all_domains.extend(extract_domains_from_text_file(file_path))
-            else:
-                domains_from_zone_file = extract_domains_from_zone_file(file_path)
-                all_domains.extend(domains_from_zone_file)
+        for file_path in args.zone:
+            domains_from_zone_file = extract_domains_from_zone_file(file_path, all_domains)
 
     unique_domains = list(set(all_domains))
     save_domains_to_file(unique_domains, args.output)
@@ -275,14 +232,20 @@ def main():
     save_domains_to_file(unique_resolved_domains, 'resolved.txt')
 
     if unique_domains:
-        print(f"Domains have been saved to {args.output}")
+        logging.info(f"Domains have been saved to {args.output}")
     else:
-        print("No domains found.")
+        logging.info("No domains found.")
 
     if unique_resolved_domains:
-        print(f"Resolved domains from IP addresses have been saved to resolved.txt")
+        logging.info(f"Resolved domains from IP addresses have been saved to resolved.txt")
     else:
-        print("No resolved domains from IP addresses.")
+        logging.info("No resolved domains from IP addresses.")
+
+    if args.check:
+        check_file = args.check if args.check is not True else args.output
+        output_file = os.path.splitext(args.output)[0] + '_checked.txt'
+        check_domains(check_file, output_file, max_workers=20)
+        logging.info(f"Checked endpoints have been saved to {output_file}")
 
 if __name__ == "__main__":
     print(BANNER)
